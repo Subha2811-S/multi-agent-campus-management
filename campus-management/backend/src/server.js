@@ -2,6 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
+import facultyRoutes from "./routes/facultyRoutes.js";
 
 dotenv.config();
 
@@ -13,6 +14,8 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: "1mb" }));
+
+app.use("/api/faculty", facultyRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({
