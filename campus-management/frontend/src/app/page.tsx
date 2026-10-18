@@ -36,10 +36,15 @@ export default function Home() {
         const response = await fetch(API_URL);
 
         if (!response.ok) {
-          throw new Error("Failed to fetch faculty");
-        }
+          const errorText = await response.text();
+
+          throw new Error(
+            `Faculty API failed: ${response.status} - ${errorText}`
+          );
+      }
 
         const data = await response.json();
+        console.log("Faculty API response:", data);
 
         const facultyList = Array.isArray(data)
           ? data

@@ -58,9 +58,20 @@ router.post("/", async (req, res) => {
 // PUT: Update faculty
 router.put("/:id", async (req, res) => {
   try {
+    // An empty email means "remove the email". Storing "" would collide with the
+    // unique email index, so unset the field instead.
+    const { email, ...fields } = req.body;
+    const update = { $set: fields };
+
+    if (typeof email === "string" && email.trim() === "") {
+      update.$unset = { email: "" };
+    } else if (email !== undefined) {
+      update.$set.email = email;
+    }
+
     const faculty = await Faculty.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      update,
       { new: true, runValidators: true }
     );
 

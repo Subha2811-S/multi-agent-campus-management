@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
@@ -13,7 +12,56 @@ type Faculty = {
   weeklyWorkload: number;
 };
 
-const API = "http://localhost:5000/api/faculty";
+// Resolved in the browser at call time. If NEXT_PUBLIC_API_URL is not set, the API is
+// assumed to be on port 5000 of the same host that served this page, so it works for
+// both http://localhost:3000 and http://<LAN-IP>:3000.
+function getApiUrl() {
+  const configured = process.env.NEXT_PUBLIC_API_URL;
+  const base = configured
+    ? configured.replace(/\/+$/, "")
+    : `${window.location.protocol}//${window.location.hostname}:5000`;
+
+  return `${base}/api/faculty`;
+}
+
+async function readJson(response: Response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+// GET /api/faculty returns a plain array; also accept { faculty: [...] } or { data: [...] }.
+function extractFaculty(data: unknown): Faculty[] {
+  const list = Array.isArray(data)
+    ? data
+    : Array.isArray((data as { faculty?: unknown })?.faculty)
+    ? (data as { faculty: unknown[] }).faculty
+    : Array.isArray((data as { data?: unknown })?.data)
+    ? (data as { data: unknown[] }).data
+    : [];
+
+  return (list as Faculty[]).map((person) => ({
+    ...person,
+    subjects: Array.isArray(person.subjects) ? person.subjects : [],
+  }));
+}
+
+const LOAD_TIMEOUT_MS = 10000;
+
+function describeError(err: unknown, apiUrl: string, fallback: string) {
+  if (err instanceof DOMException && err.name === "AbortError") {
+    return `The faculty API at ${apiUrl} did not respond within ${LOAD_TIMEOUT_MS / 1000} seconds. Check that the backend is running and that port 5000 is reachable from this device (firewall).`;
+  }
+
+  // Browsers report network/CORS failures as a TypeError ("Failed to fetch", "Load failed", ...).
+  if (err instanceof TypeError && /fetch|network|load failed/i.test(err.message)) {
+    return `Cannot reach the faculty API at ${apiUrl}. Make sure the backend is running and that its CORS setting (FRONTEND_URL) allows ${window.location.origin}.`;
+  }
+
+  return err instanceof Error && err.message ? err.message : fallback;
+}
 
 const emptyForm = {
   name: "",
@@ -38,18 +86,25 @@ export default function FacultyPage() {
     setLoading(true);
     setError("");
 
+    const apiUrl = getApiUrl();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), LOAD_TIMEOUT_MS);
+
     try {
-      const response = await fetch(API);
-      const data = await response.json();
+      const response = await fetch(apiUrl, { signal: controller.signal });
+      const data = await readJson(response);
 
       if (!response.ok) {
-        throw new Error(data.message || "Unable to load faculty");
+        throw new Error(
+          data?.message || `Unable to load faculty (server returned ${response.status})`
+        );
       }
 
-      setFaculty(data);
-    } catch {
-      setError("Faculty load aagala. Backend server running-ah irukka nu check pannu.");
+      setFaculty(extractFaculty(data));
+    } catch (err) {
+      setError(describeError(err, apiUrl, "Unable to load faculty"));
     } finally {
+      clearTimeout(timer);
       setLoading(false);
     }
   }, []);
@@ -90,9 +145,11 @@ export default function FacultyPage() {
 
     setSaving(true);
 
+    const apiUrl = getApiUrl();
+
     try {
       const response = await fetch(
-        editingId ? `${API}/${editingId}` : API,
+        editingId ? `${apiUrl}/${editingId}` : apiUrl,
         {
           method: editingId ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
@@ -100,24 +157,28 @@ export default function FacultyPage() {
             name: form.name.trim(),
             department: form.department.trim(),
             subjects,
-            email: form.email.trim() || undefined,
+            // "" is sent on purpose: the backend treats it as "no email"
+            // (POST ignores it, PUT removes the stored email).
+            email: form.email.trim(),
             isAvailable: form.isAvailable,
             weeklyWorkload: Number(form.weeklyWorkload),
           }),
         }
       );
 
-      const data = await response.json();
+      const data = await readJson(response);
 
       if (!response.ok) {
-        throw new Error(data.message || "Unable to save faculty");
+        throw new Error(
+          data?.message || `Unable to save faculty (server returned ${response.status})`
+        );
       }
 
       setMessage(editingId ? "Faculty updated successfully!" : "Faculty added successfully!");
       resetForm();
       await loadFaculty();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(describeError(err, apiUrl, "Something went wrong."));
     } finally {
       setSaving(false);
     }
@@ -146,14 +207,18 @@ export default function FacultyPage() {
     setError("");
     setMessage("");
 
+    const apiUrl = getApiUrl();
+
     try {
-      const response = await fetch(`${API}/${person._id}`, {
+      const response = await fetch(`${apiUrl}/${person._id}`, {
         method: "DELETE",
       });
-      const data = await response.json();
+      const data = await readJson(response);
 
       if (!response.ok) {
-        throw new Error(data.message || "Unable to delete faculty");
+        throw new Error(
+          data?.message || `Unable to delete faculty (server returned ${response.status})`
+        );
       }
 
       setMessage("Faculty deleted successfully!");
@@ -164,7 +229,7 @@ export default function FacultyPage() {
 
       await loadFaculty();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed.");
+      setError(describeError(err, apiUrl, "Delete failed."));
     }
   }
 
