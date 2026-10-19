@@ -6,10 +6,15 @@ import Link from "next/link";
 
 type TimetableEntry = {
   _id: string;
+  semester?: number | null;
+  yearOfStudy?: number | null;
+  subjectCode?: string | null;
+  hour?: string | null;
+  batch?: string | null;
   day: string;
   subject: string;
-  faculty: string;
-  classroom: string;
+  faculty: string | null;
+  classroom: string | null;
   department: string;
   startTime: string;
   endTime: string;
@@ -18,11 +23,15 @@ type TimetableEntry = {
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const EMPTY_FORM = {
+  semester: "5",
+  subjectCode: "",
+  hour: "",
+  batch: "Batch I",
   day: "Monday",
   subject: "",
   faculty: "",
   classroom: "",
-  department: "",
+  department: "CSE (AI & ML)",
   startTime: "09:00",
   endTime: "10:00",
 };
@@ -36,19 +45,43 @@ const API_URL =
       : "http://localhost:5000/api/timetable";
 
 function overlaps(a: TimetableEntry, b: TimetableEntry) {
-  return a.day === b.day &&
+  return (
+    a.day === b.day &&
     a.startTime < b.endTime &&
-    b.startTime < a.endTime;
+    b.startTime < a.endTime
+  );
 }
 
-function getConflict(entry: TimetableEntry, entries: TimetableEntry[]) {
-  return entries.find(
-    (other) =>
-      other._id !== entry._id &&
-      overlaps(entry, other) &&
-      (other.faculty.trim().toLowerCase() === entry.faculty.trim().toLowerCase() ||
-        other.classroom.trim().toLowerCase() === entry.classroom.trim().toLowerCase())
-  );
+function safeText(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function getConflict(
+  entry: TimetableEntry,
+  entries: TimetableEntry[]
+) {
+  return entries.find((other) => {
+    if (!other || other._id === entry._id) return false;
+
+    if (!overlaps(entry, other)) return false;
+
+    const faculty = safeText(entry.faculty);
+    const otherFaculty = safeText(other.faculty);
+    const classroom = safeText(entry.classroom);
+    const otherClassroom = safeText(other.classroom);
+
+    const facultyConflict =
+      faculty !== "" &&
+      otherFaculty !== "" &&
+      faculty === otherFaculty;
+
+    const classroomConflict =
+      classroom !== "" &&
+      otherClassroom !== "" &&
+      classroom === otherClassroom;
+
+    return facultyConflict || classroomConflict;
+  });
 }
 
 export default function TimetablePage() {
@@ -60,6 +93,8 @@ export default function TimetablePage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  // The currently imported dataset is Semester 5, so start there.
+  const [semesterFilter, setSemesterFilter] = useState("5");
   const [departmentFilter, setDepartmentFilter] = useState("All");
   const [facultyFilter, setFacultyFilter] = useState("All");
   const [classroomFilter, setClassroomFilter] = useState("All");
@@ -71,7 +106,11 @@ export default function TimetablePage() {
     setNotice("");
 
     try {
-      const response = await fetch(API_URL, { cache: "no-store" });
+      const query =
+        semesterFilter === "All"
+          ? ""
+          : `?semester=${encodeURIComponent(semesterFilter)}`;
+      const response = await fetch(`${API_URL}${query}`, { cache: "no-store" });
       if (!response.ok) {
         throw new Error(
           response.status === 404
@@ -107,7 +146,7 @@ export default function TimetablePage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [semesterFilter]);
 
   useEffect(() => {
     void loadTimetable();
@@ -146,7 +185,10 @@ export default function TimetablePage() {
 
   function openAdd() {
     setEditingId(null);
-    setForm(EMPTY_FORM);
+    setForm({
+      ...EMPTY_FORM,
+      semester: semesterFilter === "All" ? "5" : semesterFilter,
+    });
     setNotice("");
     setModalOpen(true);
   }
@@ -154,11 +196,16 @@ export default function TimetablePage() {
   function openEdit(entry: TimetableEntry) {
     setEditingId(entry._id);
     setForm({
+      ...EMPTY_FORM,
+      semester: String(entry.semester ?? (semesterFilter === "All" ? 5 : semesterFilter)),
+      subjectCode: entry.subjectCode ?? "",
+      hour: entry.hour ?? "",
+      batch: entry.batch ?? "Batch I",
       day: entry.day,
       subject: entry.subject,
-      faculty: entry.faculty,
-      classroom: entry.classroom,
-      department: entry.department,
+      faculty: entry.faculty ?? "",
+      classroom: entry.classroom ?? "",
+      department: entry.department ?? "CSE (AI & ML)",
       startTime: entry.startTime,
       endTime: entry.endTime,
     });
@@ -180,6 +227,9 @@ export default function TimetablePage() {
 
     const proposed = {
       ...form,
+      semester: Number(form.semester),
+      faculty: form.faculty || null,
+      classroom: form.classroom || null,
       _id: editingId ?? "new-entry",
     } as TimetableEntry;
 
@@ -200,7 +250,15 @@ export default function TimetablePage() {
         {
           method: editingId ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(form),
+          body: JSON.stringify({
+            ...form,
+            semester: Number(form.semester),
+            yearOfStudy: Math.ceil(Number(form.semester) / 2),
+            faculty: form.faculty.trim() || null,
+            classroom: form.classroom.trim() || null,
+            subjectCode: form.subjectCode.trim() || null,
+            hour: form.hour.trim() || null,
+          }),
         }
       );
 
@@ -319,7 +377,28 @@ export default function TimetablePage() {
 
         <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-5">
           <h2 className="text-lg font-semibold">Filter timetable</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <label className="text-sm text-slate-400">
+              Semester
+              <select
+                className={`${inputClass} mt-2`}
+                value={semesterFilter}
+                onChange={(e) => {
+                  setSemesterFilter(e.target.value);
+                  setDepartmentFilter("All");
+                  setFacultyFilter("All");
+                  setClassroomFilter("All");
+                  setDayFilter("All");
+                }}
+              >
+                <option value="All">All semesters</option>
+                {Array.from({ length: 8 }, (_, index) => index + 1).map((semester) => (
+                  <option key={semester} value={String(semester)}>
+                    Semester {semester}
+                  </option>
+                ))}
+              </select>
+            </label>
             {[
               {
                 label: "Department",
@@ -406,6 +485,9 @@ export default function TimetablePage() {
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 <p className="font-semibold">{entry.subject}</p>
+                                <p className="mt-1 text-xs text-slate-400">
+                                  Semester {entry.semester ?? "Not assigned"}{entry.subjectCode ? ` · ${entry.subjectCode}` : ""}
+                                </p>
                                 <p className="mt-1 text-sm text-cyan-300">
                                   {entry.startTime} – {entry.endTime}
                                 </p>
@@ -472,6 +554,31 @@ export default function TimetablePage() {
               <form onSubmit={saveEntry} className="mt-5 space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="text-sm text-slate-300">
+                    Semester
+                    <select
+                      required
+                      className={`${inputClass} mt-2`}
+                      value={form.semester}
+                      onChange={(e) => setForm({ ...form, semester: e.target.value })}
+                    >
+                      {Array.from({ length: 8 }, (_, index) => index + 1).map((semester) => (
+                        <option key={semester} value={String(semester)}>Semester {semester}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-sm text-slate-300">
+                    Subject code
+                    <input className={`${inputClass} mt-2`} value={form.subjectCode} onChange={(e) => setForm({ ...form, subjectCode: e.target.value })} placeholder="e.g. CSE23CT301" />
+                  </label>
+                  <label className="text-sm text-slate-300">
+                    Hour
+                    <input className={`${inputClass} mt-2`} value={form.hour} onChange={(e) => setForm({ ...form, hour: e.target.value })} placeholder="e.g. I–II" />
+                  </label>
+                  <label className="text-sm text-slate-300">
+                    Batch
+                    <input className={`${inputClass} mt-2`} value={form.batch} onChange={(e) => setForm({ ...form, batch: e.target.value })} placeholder="e.g. Batch I" />
+                  </label>
+                  <label className="text-sm text-slate-300">
                     Day
                     <select className={`${inputClass} mt-2`} value={form.day} onChange={(e) => setForm({ ...form, day: e.target.value })}>
                       {DAYS.map((day) => <option key={day}>{day}</option>)}
@@ -483,11 +590,11 @@ export default function TimetablePage() {
                   </label>
                   <label className="text-sm text-slate-300">
                     Faculty
-                    <input required maxLength={100} className={`${inputClass} mt-2`} value={form.faculty} onChange={(e) => setForm({ ...form, faculty: e.target.value })} placeholder="Faculty name" />
+                    <input maxLength={100} className={`${inputClass} mt-2`} value={form.faculty} onChange={(e) => setForm({ ...form, faculty: e.target.value })} placeholder="Faculty name" />
                   </label>
                   <label className="text-sm text-slate-300">
                     Classroom
-                    <input required maxLength={50} className={`${inputClass} mt-2`} value={form.classroom} onChange={(e) => setForm({ ...form, classroom: e.target.value })} placeholder="e.g. CR-1" />
+                    <input maxLength={50} className={`${inputClass} mt-2`} value={form.classroom} onChange={(e) => setForm({ ...form, classroom: e.target.value })} placeholder="e.g. CR-1" />
                   </label>
                   <label className="text-sm text-slate-300">
                     Department

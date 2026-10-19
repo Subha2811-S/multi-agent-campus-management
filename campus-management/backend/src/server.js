@@ -7,6 +7,7 @@ import dotenv from "dotenv";
 import facultyRoutes from "./routes/facultyRoutes.js";
 import classroomRoutes from "./routes/classroomRoutes.js";
 import timetableRoutes from "./routes/timetableRoutes.js";
+import rlRoutes from "./routes/rlRoutes.js";
 
 dotenv.config();
 
@@ -30,6 +31,7 @@ app.use(express.json({ limit: "1mb" }));
 app.use("/api/faculty", facultyRoutes);
 app.use("/api/classrooms", classroomRoutes);
 app.use("/api/timetable", timetableRoutes);
+app.use("/api/rl", rlRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({

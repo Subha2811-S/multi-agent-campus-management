@@ -12,7 +12,7 @@ const navigation = [
   { label: "Classrooms & Labs", href: "/classrooms", icon: "🏢" },
   { label: "Student Batches", href: "/batches", icon: "🎓" },
   { label: "Timetable", href: "/timetable", icon: "📅" },
-  { label: "AI Agents", href: "/agents", icon: "🤖" },
+  { label: "AI Agents", href: "/agents/coordinator", icon: "🤖" },
   { label: "RL Scheduling Agent", href: "/agents/rl", icon: "🧠" },
   { label: "Resources", href: "/resources", icon: "📊" },
   { label: "Reports", href: "/reports", icon: "📈" },
@@ -23,7 +23,14 @@ const modules = [
   { title: "Classroom Management", description: "Manage classrooms, labs and capacity.", icon: "🏢", href: "/classrooms" },
   { title: "Timetable Scheduling", description: "Generate and optimize academic schedules.", icon: "📅", href: "/timetable" },
   { title: "RL Scheduling Agent", description: "Learn better scheduling decisions using rewards.", icon: "🧠", href: "/agents/rl" },
-  { title: "Agentic AI Coordinator", description: "Coordinate campus agents and rescheduling tasks.", icon: "🤖", href: "/agents" },
+  
+{
+  title: "Agentic AI Coordinator",
+  description: "Coordinate campus agents and rescheduling tasks.",
+  icon: "🤖",
+  href: "/agents/coordinator"
+},
+
   { title: "Resource Management", description: "Monitor rooms and campus resources.", icon: "📊", href: "/resources" },
 ];
 
